@@ -9,14 +9,14 @@ This project is a turn-based game where players can move characters on a grid. T
 
 ## Prerequisites
 
-- **Node.js** (v14.x or higher recommended)
-- **npm** (Node Package Manager)
+- Node.js (v14.x or higher recommended)
+- npm (Node Package Manager)
 
 ## Setup
 
 ### Server Setup
 
-1. **Clone the repository**:
+1. Clone the repository:
    ```bash
    git clone <repository-url>
    cd <repository-directory>
