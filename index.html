@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Turn-Based Game</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #f5f5f5;
+            color: #333;
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+        }
+        h1 {
+            margin: 0;
+            font-size: 2.5em;
+            color: #444;
+        }
+        #status, #player-info, #turn-info {
+            margin: 10px 0;
+            font-size: 1.2em;
+        }
+        #player-info {
+            text-align: right;
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            font-size: 8px;
+        }
+        #turn-info {
+            font-weight: bold;
+        }
+        #board-container {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+        }
+        #board {
+            display: grid;
+            grid-template-columns: repeat(5, 60px);
+            gap: 5px;
+            background-color: #e0e0e0;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        .cell {
+            width: 60px;
+            height: 60px;
+            background-color: #ffffff;
+            border: 1px solid #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5em;
+            cursor: pointer;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+        }
+        .cell[data-player="A"] {
+            background-color: #aaf;
+        }
+        .cell[data-player="B"] {
+            background-color: #faa;
+        }
+        .cell.selected {
+            border: 2px solid #333;
+            background-color: #ddd;
+            transform: scale(1.1);
+        }
+        #controls {
+            margin-left: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            font-size: 1.2em;
+        }
+        select, button {
+            margin-bottom: 10px;
+            font-size: 1em;
+            padding: 10px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background-color: #fff;
+            cursor: pointer;
+        }
+        
+        select:focus, button:focus {
+            outline: none;
+            border-color: #333;
+        }
+    </style>
+</head>
+<body>
+    <h1>Turn-Based Chess-Like Game</h1>
+    <div id="status">Waiting for players...</div>
+    <div id="player-info">Player: <span id="player">None</span></div>
+    <div id="turn-info">Current Turn: <span id="turn">A</span></div>
+    <div id="board-container">
+        <div id="board"></div>
+        <div id="controls">
+            <label for="direction-select">Move Direction:</label>
+            <select id="direction-select">
+                <option value="F">Forward</option>
+                <option value="B">Backward</option>
+                <option value="L">Left</option>
+                <option value="R">Right</option>
+                <option value="FL">Forward Left</option>
+                <option value="FR">Forward Right</option>
+                <option value="BL">Backward Left</option>
+                <option value="BR">Backward Right</option>
+            </select>
+            <button id="move-button">Move</button>
+        </div>
+    </div>
+    <script>
+        const ws = new WebSocket('ws://localhost:8080');
+        let gameState = {};
+        let currentPlayer = null;
+        let selectedCell = null;
+
+        ws.onmessage = event => {
+            const data = JSON.parse(event.data);
+
+            console.log('Received message:', data); // Log received messages for debugging
+
+            if (data.type === 'init') {
+                gameState = data.state;
+                renderBoard();
+                updatePlayerInfo();
+                updateTurnInfo();
+                if (!currentPlayer) {
+                    currentPlayer = prompt("Enter your player (A or B):");
+                    ws.send(JSON.stringify({ type: 'join', player: currentPlayer }));
+                }
+            } else if (data.type === 'update') {
+                gameState = data.state;
+                renderBoard();
+                updatePlayerInfo();
+                updateTurnInfo();
+            } else if (data.type === 'message') {
+                document.getElementById('status').textContent = data.message;
+            } else if (data.type === 'invalid') {
+                alert(data.message);
+            } else if (data.type === 'game_over') {
+                const message = data.winner === 'draw' ? 'The game is a draw!' : `Game Over! Player ${data.winner} wins!`;
+                document.getElementById('status').textContent = message;
+                if (confirm('Do you want to restart the game?')) {
+                    ws.send(JSON.stringify({ type: 'rematch' }));
+                }
+            }
+        };
+
+
+        function renderBoard() {
+            const board = document.getElementById('board');
+            board.innerHTML = '';
+
+            for (let i = 0; i < 5; i++) {
+                for (let j = 0; j < 5; j++) {
+                    const cell = document.createElement('div');
+                    cell.classList.add('cell');
+                    const piece = gameState.board[i][j];
+                    if (piece) {
+                        cell.textContent = piece.charName;
+                        cell.dataset.player = piece.player;
+                        cell.dataset.x = i;
+                        cell.dataset.y = j;
+                        if (piece.player === currentPlayer) {
+                            cell.addEventListener('click', handleCellClick);
+                        }
+                    }
+                    board.appendChild(cell);
+                }
+            }
+        }
+
+        function handleCellClick(event) {
+            if (selectedCell) {
+                selectedCell.classList.remove('selected');
+            }
+
+            selectedCell = event.target;
+            selectedCell.classList.add('selected');
+        }
+
+        document.getElementById('move-button').addEventListener('click', () => {
+            if (!selectedCell) {
+                alert('Please select a character on the board.');
+                return;
+            }
+
+            const character = selectedCell.textContent;
+            const direction = document.getElementById('direction-select').value;
+            const x = parseInt(selectedCell.dataset.x);
+            const y = parseInt(selectedCell.dataset.y);
+
+            if (character && direction) {
+                ws.send(JSON.stringify({ type: 'move', player: currentPlayer, move: `${character}:${direction}` }));
+                selectedCell.classList.remove('selected');
+                selectedCell = null; // Deselect after move
+            }
+        });
+
+        ws.onopen = () => {
+            if (!currentPlayer) {
+                currentPlayer = prompt("Enter your player (A or B):");
+                ws.send(JSON.stringify({ type: 'join', player: currentPlayer }));
+            }
+        };
+
+        function updatePlayerInfo() {
+            document.getElementById('player').textContent = currentPlayer;
+        }
+
+        function updateTurnInfo() {
+            document.getElementById('turn').textContent = gameState.currentTurn;
+        }
+    </script>
+</body>
+</html>
